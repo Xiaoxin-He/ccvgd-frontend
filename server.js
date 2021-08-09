@@ -1,11 +1,11 @@
 // Redirect all traffic from http to https
-function requireHTTPS(req, res, next) {
-    // The 'x-forwarded-proto' check is for Heroku
-    if (!req.secure && req.get('x-forwarded-proto') !== 'https') {
-        return res.redirect('http://' + req.get('host') + req.url);
-    }
-    next();
-}
+// function requireHTTPS(req, res, next) {
+//     // The 'x-forwarded-proto' check is for Heroku
+//     if (!req.secure && req.get('x-forwarded-proto') !== 'https') {
+//         return res.redirect('http://' + req.get('host') + req.url);
+//     }
+//     next();
+// }
 
 const express = require('express');
 const app = express();
