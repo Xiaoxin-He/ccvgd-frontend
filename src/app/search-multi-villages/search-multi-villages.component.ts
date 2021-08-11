@@ -17,7 +17,9 @@ import { MultiVillageFilterService } from "../services/multi-village-filter.serv
 import { HttpClient } from "@angular/common/http";
 import { Input, Output, EventEmitter } from "@angular/core";
 import { MatTabGroup } from "@angular/material/tabs";
-import { Category } from "./modals/formatData";
+import { Category, CheckList, PostDataToSearch } from "./modals/formatData";
+import { HttpServiceService } from '../services/http-service.service';
+import { THIS_EXPR } from "@angular/compiler/src/output/output_ast";
 
 @Component({
   selector: "app-search-multi-villages",
@@ -34,8 +36,8 @@ export class SearchMultiVillagesComponent implements OnInit {
   cityList: string[] = [];
   countyList: string[] = [];
   displayedColumns: string[] = [
-    "checked",
-    "name",
+    "isSelected",
+    "village_name",
     "province",
     "city",
     "county",
@@ -108,6 +110,14 @@ export class SearchMultiVillagesComponent implements OnInit {
     year_range: [],
   };
 
+  //TODO
+  masterSelected: boolean;
+  multiVillages_checkList: CheckList[] = [];
+  multiVillages_checkedList: CheckList[] = [];
+  //search
+  postDataToSearch: PostDataToSearch[] = [];
+
+
   constructor(
     private villageNameService: VillageNameService,
     private provinceCityCountyService: ProvinceCityCountyService,
@@ -115,8 +125,10 @@ export class SearchMultiVillagesComponent implements OnInit {
     private el: ElementRef,
     private router: Router, // private multiVillageFilterService: MultiVillageFilterService,
     private http: HttpClient,
-    private multiVillageFilterService: MultiVillageFilterService
+    private multiVillageFilterService: MultiVillageFilterService,
+    private httpService : HttpServiceService
   ) {
+    this.masterSelected = false;
     // this.provinceList = this.provinceCityCountyService.getProvince();
   }
 
@@ -138,14 +150,17 @@ export class SearchMultiVillagesComponent implements OnInit {
             this.countyList.push(item.county);
           }
         }
-        // item.isSelected = false;
+        // console.log(item);
+        this.multiVillages_checkList.push({
+          village_id: item.id,
+          village_name: item.name,
+          province: item.province,
+          city: item.city,
+          county: item.county,
+          isSelected: false
+        })
       });
-      // console.log(result.data[0].city);
-      console.log(result.data);
-
-      // console.log(this.countyList);
       this.options = new MatTableDataSource(result.data);
-      // console.log(this.options);
     });
   }
 
@@ -154,65 +169,123 @@ export class SearchMultiVillagesComponent implements OnInit {
     this.options.filter = filterValue.trim().toLowerCase();
     // console.log(this.options.filter);
   }
+   //********************* for checkbox field ************************************* */
 
-  async checkBoxValue(event: MatCheckboxChange, element) {
-    // const isChecked = (<HTMLInputElement>event).checked;
-    // console.log('check box event', event.checked);
-    this.multiSearchResult = element;
-    // console.log('current check box element', element);
-    // console.log(element.id);
-    let getTopic = [];
-
-    // console.log(this.middleTabsMap.get(this.selectedTabLabel));
-    // getTopic.push(this.middleTabsMap.get(this.selectedTabLabel));
-    // console.log(this.middleTabsMap.get(this.selectedTabLabel));
-
-    if (getTopic.length === 0 || getTopic[0] === undefined) {
-      // getTopic = "economy";
-      getTopic.push("economy", "population", "military");
+  // The master checkbox will check/ uncheck all items
+  checkUncheckAll() {
+    for(let i = 0; i < this.multiVillages_checkList.length; i++) {
+      this.multiVillages_checkList[i].isSelected = this.masterSelected;
     }
-
-    this.postVillagesTopics = {
-      villageid: [element.id],
-      topic: getTopic,
-      //TODO
-      // topic: ['economy'],
-    };
-    this.getVillageDataWithTopics();
-
-    console.log("getTopic🧸 ", getTopic);
-
-    if (getTopic[0] === undefined) {
-      console.log("true");
-    }
-    if (element.id) {
-      this.villageidList.push(element.id);
-
-      const currentServiceData =
-        await this.multiVillageFilterService.onPostMultiVillages(
-          this.postVillagesTopics
-        );
-
-      console.log(currentServiceData);
-    }
-    console.log(await this.cat1Cat2Map);
-
-    if (event.checked) {
-      this.checkItems.set(element.id, element);
-    } else {
-      this.checkItems.delete(element.id);
-      // this.category1Map.delete(element.id);
-    }
-
-    //BUG default value?
-    if (this.selectedTabLabel === undefined) {
-      this.selectedTabLabel = "经济";
-    }
-    // console.log(
-    //   'diff',
-    //   this.arr_diff(['人均居住面积', 'b'], ['b', '耕地面积'])
-    // );
+    this.getCheckedItemList();
   }
+
+  //check if all the checkbox selected
+  isAllCheckBoxSelected(event: MatCheckboxChange, element) {
+    let checkedItemID = this.multiVillages_checkList.findIndex((obj => obj.village_id === element.id));
+    this.multiVillages_checkList[checkedItemID].isSelected = event.checked ? true : false;
+    this.getCheckedItemList();
+  }
+
+  //here all the items are checked 
+  getCheckedItemList() {
+    this.multiVillages_checkedList = [];
+    for(let i = 0; i < this.multiVillages_checkList.length; i++) {
+      if(this.multiVillages_checkList[i].isSelected)
+      this.multiVillages_checkedList.push(this.multiVillages_checkList[i]);
+    }
+    console.log(this.multiVillages_checkedList);
+    this.getListOfchecked_VillagesID();
+  }
+
+  //*************************** post and get data ******************************* */
+  //1. get list of village id and post request with all the topic -- as default
+
+   getListOfchecked_VillagesID() {
+    let checkedVillagesID = [];
+    for(let i in this.multiVillages_checkedList) {
+      checkedVillagesID.push(this.multiVillages_checkedList[i].village_id);
+    }
+    // this.processRequest(checkedVillagesID);
+    return checkedVillagesID;
+  }
+
+  // getDefaultTopics() 
+
+  async processRequest() {
+    const response =
+    await this.multiVillageFilterService.onPostMultiVillages(
+      {
+        villageid: this.getListOfchecked_VillagesID(),
+        //BUG 1.checkedall 2. fourthlastNames -- ask backend
+        topic: ["gazetteerinformation","naturaldisasters","naturalenvironment", 
+        "military","education","economy", "familyplanning", "population", 
+        "ethnicgroups", "firstavailabilityorpurchase"]
+      }
+    );
+    console.log(response);
+  }
+
+  
+
+
+  // async checkBoxValue(event: MatCheckboxChange, element) {
+  //   // const isChecked = (<HTMLInputElement>event).checked;
+  //   console.log('check box event', event.checked);
+  //   this.multiSearchResult = element;
+  //   // console.log('current check box element', element);
+  //   // console.log(element.id);
+  //   let getTopic = [];
+
+  //   // console.log(this.middleTabsMap.get(this.selectedTabLabel));
+  //   // getTopic.push(this.middleTabsMap.get(this.selectedTabLabel));
+  //   // console.log(this.middleTabsMap.get(this.selectedTabLabel));
+
+  //   if (getTopic.length === 0 || getTopic[0] === undefined) {
+  //     // getTopic = "economy";
+  //     getTopic.push("economy", "population", "military");
+  //   }
+
+  //   this.postVillagesTopics = {
+  //     villageid: [element.id],
+  //     topic: getTopic,
+  //     //TODO
+  //     // topic: ['economy'],
+  //   };
+  //   this.getVillageDataWithTopics();
+
+  //   console.log("getTopic🧸 ", getTopic);
+
+  //   if (getTopic[0] === undefined) {
+  //     console.log("true");
+  //   }
+  //   if (element.id) {
+  //     this.villageidList.push(element.id);
+
+  //     const currentServiceData =
+  //       await this.multiVillageFilterService.onPostMultiVillages(
+  //         this.postVillagesTopics
+  //       );
+
+  //     console.log(currentServiceData);
+  //   }
+  //   console.log(await this.cat1Cat2Map);
+
+  //   if (event.checked) {
+  //     this.checkItems.set(element.id, element);
+  //   } else {
+  //     this.checkItems.delete(element.id);
+  //     // this.category1Map.delete(element.id);
+  //   }
+
+  //   //BUG default value?
+  //   if (this.selectedTabLabel === undefined) {
+  //     this.selectedTabLabel = "经济";
+  //   }
+  //   // console.log(
+  //   //   'diff',
+  //   //   this.arr_diff(['人均居住面积', 'b'], ['b', '耕地面积'])
+  //   // );
+  // }
 
   tabChanged(event) {
     //TODO this is a change event
@@ -311,9 +384,7 @@ export class SearchMultiVillagesComponent implements OnInit {
   //TODO
   onCreatePost(postData: { villageid: any; topic: any }) {
     // Send Http request
-    this.http
-      .post("http://ngrok.luozm.me:8395/ccvg/advancesearch", postData)
-      .subscribe((responseData) => {
+    this.httpService.post("advancesearch", postData).then((responseData) => {
         console.log("responseData", responseData);
       });
   }
@@ -401,6 +472,7 @@ export class SearchMultiVillagesComponent implements OnInit {
         this.countyList.push(item.county);
       }
     });
+    console.log(this.options)
   }
 
   changeCounty(data) {
